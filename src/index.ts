@@ -7,17 +7,38 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const serverKey = process.env.MIDTRANS_SERVER_KEY;
+if (!serverKey) {
+  console.error('Error: MIDTRANS_SERVER_KEY is not defined in your .env file.');
+  process.exit(1); // Exit the application with an error code
+}
+
+const clientKey = process.env.MIDTRANS_CLIENT_KEY;
+if (!clientKey) {
+  console.error('Error: MIDTRANS_CLIENT_KEY is not defined in your .env file.');
+  process.exit(1); // Exit the application with an error code
+}
+
 app.use(express.json());
 
 const snap = new MidtransClient.Snap({
   isProduction: false,
+  serverKey: serverKey,
+  clientKey: clientKey,
+});
+
+// CoreApi untuk cek status
+const coreApi = new MidtransClient.CoreApi({
+  isProduction: false,
   serverKey: process.env.MIDTRANS_SERVER_KEY as string,
+  clientKey: process.env.MIDTRANS_CLIENT_KEY as string,
 });
 
 app.get('/', (req: Request, res: Response) => {
   res.status(200).send('Hello from Express with Typescript!');
 });
 
+// ✅ CREATE TRANSACTION
 app.post('/create-transaction', async (req: Request, res: Response) => {
   try {
     const orderId = `ORDER-${Date.now()}`;
@@ -31,7 +52,7 @@ app.post('/create-transaction', async (req: Request, res: Response) => {
         {
           id: 'ITEM-1',
           name: 'Product Name',
-          prices: 100000,
+          price: 100000,
           quantity: 1,
         },
       ],
@@ -44,10 +65,10 @@ app.post('/create-transaction', async (req: Request, res: Response) => {
     };
 
     const transaction = await snap.createTransaction(parameter);
-    const transactionToken = transacion.token;
 
     res.status(200).json({
-      token: transactionToken,
+      orderId,
+      token: transaction.token,
       redirectUrl: transaction.redirect_url,
     });
   } catch (error) {
@@ -56,39 +77,29 @@ app.post('/create-transaction', async (req: Request, res: Response) => {
   }
 });
 
+// ✅ NOTIFICATION
 app.post('/notification', async (req: Request, res: Response) => {
   try {
     const notification = req.body;
-    const statusResponse = await snap.transaction.notification(notification);
-    const { transaction_status: transactionStatus, fraud_status: fraudStatus } =
-      statusResponse;
-
-    console.log(
-      `Transaction status recieved for orderId: ${statusResponse.order_id}`
-    );
-
-    if (transactionStatus === 'capture') {
-      if (fraudStatus === 'challenge') {
-        console.log(`Transaction challenge: ${statusResponse.order_id}`);
-      } else if (fraudStatus === 'accept') {
-        console.log(`Transaction accept: ${statusResponse.order_id}`);
-      }
-    } else if (transactionStatus === 'settlement') {
-      console.log(`Transaction settlement: ${statusResponse.order_id}`);
-    } else if (transactionStatus === 'pending') {
-      console.log(`Transaction pending: ${statusResponse.order_id}`);
-    } else if (transactionStatus === 'deny') {
-      console.log(`Transaction denied: ${statusResponse.order_id}`);
-    } else if (transactionStatus === 'expire') {
-      console.log(`Transaction expired: ${statusResponse.order_id}`);
-    } else if (transactionStatus === 'cancel') {
-      console.log(`Transaction cancelled: ${statusResponse.order_id}`);
-    }
+    const statusResponse = await coreApi.transaction.notification(notification);
+    console.log(`Transaction status received:`, statusResponse);
 
     res.status(200).send('OK');
   } catch (error) {
     console.error('Error processing notification:', error);
     res.status(200).send('OK');
+  }
+});
+
+// ✅ CHECK STATUS
+app.get('/check-transaction/:orderId', async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const status = await coreApi.transaction.status(orderId as string);
+    res.status(200).json(status);
+  } catch (error) {
+    console.error('Error fetching transaction status:', error);
+    res.status(500).json({ error: 'Failed to fetch transaction status' });
   }
 });
 

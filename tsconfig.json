@@ -10,6 +10,7 @@
     "module": "nodenext",
     "target": "esnext",
     "esModuleInterop": true,
+    "typeRoots": ["./node_modules/@types", "./src/types"],
     "verbatimModuleSyntax": true,
     "types": [],
     // For nodejs:
